@@ -2,11 +2,11 @@
 - name: Verify that the operating system is supported
   ansible.builtin.assert:
     that:
-      - ansible_distribution is defined
-      - ansible_distribution in ['Ubuntu', 'Rocky']
+      - ansible_facts['distribution'] is defined
+      - ansible_facts['distribution'] in ['Ubuntu', 'Rocky']
     fail_msg: >-
       create-ansible-user supports Ubuntu and Rocky Linux only; detected
-      {{ ansible_distribution | default('an unknown distribution') }}.
+      {{ ansible_facts['distribution'] | default('an unknown distribution') }}.
     quiet: true
 
 - name: Verify role settings
