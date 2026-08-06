@@ -1,0 +1,130 @@
+---
+- name: Verify that the operating system is supported
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution is defined
+      - ansible_distribution in ['Ubuntu', 'Rocky']
+    fail_msg: >-
+      create-ansible-user supports Ubuntu and Rocky Linux only; detected
+      {{ ansible_distribution | default('an unknown distribution') }}.
+    quiet: true
+
+- name: Verify role settings
+  ansible.builtin.assert:
+    that:
+      - create_ansible_user_name is string
+      - create_ansible_user_name | trim | length > 0
+      - create_ansible_user_name is match('^[a-z_][a-z0-9_-]*$')
+      - create_ansible_user_comment is string
+      - create_ansible_user_shell is string
+      - create_ansible_user_shell | trim | length > 0
+      - create_ansible_user_home is string
+      - create_ansible_user_home is match('^/[^/].*')
+      - create_ansible_user_ssh_public_keys is sequence
+      - create_ansible_user_ssh_public_keys is not string
+      - create_ansible_user_ssh_public_keys | length > 0
+      - create_ansible_user_state_file_enabled | type_debug == 'bool'
+    fail_msg: >-
+      Set create_ansible_user_ssh_public_keys to a non-empty list of SSH
+      public keys. The username must be a conventional Unix account name, and
+      the shell and absolute home path must be non-empty strings.
+    quiet: true
+
+- name: Verify SSH public keys
+  ansible.builtin.assert:
+    that:
+      - item is string
+      - item | trim | length > 0
+    fail_msg: >-
+      Every item in create_ansible_user_ssh_public_keys must be a non-empty
+      string.
+    quiet: true
+  loop: "{{ create_ansible_user_ssh_public_keys }}"
+  loop_control:
+    label: "SSH public key {{ ansible_loop.index }}"
+    extended: true
+
+- name: Create the Ansible user's primary group
+  ansible.builtin.group:
+    name: "{{ create_ansible_user_name }}"
+    state: present
+
+- name: Create the Ansible user with a locked password
+  ansible.builtin.user:
+    name: "{{ create_ansible_user_name }}"
+    comment: "{{ create_ansible_user_comment }}"
+    group: "{{ create_ansible_user_name }}"
+    home: "{{ create_ansible_user_home }}"
+    create_home: true
+    shell: "{{ create_ansible_user_shell }}"
+    password_lock: true
+    state: present
+
+- name: Create the Ansible user's SSH directory
+  ansible.builtin.file:
+    path: "{{ create_ansible_user_home }}/.ssh"
+    state: directory
+    owner: "{{ create_ansible_user_name }}"
+    group: "{{ create_ansible_user_name }}"
+    mode: "0700"
+
+- name: Mark the Ansible user configuration as incomplete
+  ansible.builtin.copy:
+    content: "nok\n"
+    dest: "{{ create_ansible_user_home }}/.ssh/.state"
+    owner: "{{ create_ansible_user_name }}"
+    group: "{{ create_ansible_user_name }}"
+    mode: "0600"
+  when: create_ansible_user_state_file_enabled
+
+- name: Install sudo
+  ansible.builtin.package:
+    name: sudo
+    state: present
+
+- name: Configure authorized SSH keys
+  ansible.builtin.copy:
+    content: >-
+      {{ (create_ansible_user_ssh_public_keys | map('trim') | join('\n'))
+         + '\n' }}
+    dest: "{{ create_ansible_user_home }}/.ssh/authorized_keys"
+    owner: "{{ create_ansible_user_name }}"
+    group: "{{ create_ansible_user_name }}"
+    mode: "0600"
+
+- name: Read back the authorized SSH keys
+  ansible.builtin.slurp:
+    src: "{{ create_ansible_user_home }}/.ssh/authorized_keys"
+  register: create_ansible_user_authorized_keys_file
+  when: create_ansible_user_state_file_enabled
+
+- name: Verify the authorized SSH keys on the target
+  ansible.builtin.assert:
+    that:
+      - >-
+        (create_ansible_user_authorized_keys_file.content
+        | b64decode).splitlines()
+        == (create_ansible_user_ssh_public_keys | map('trim') | list)
+    fail_msg: >-
+      The target's authorized_keys file does not contain exactly the configured
+      SSH public keys. The state marker remains nok.
+    quiet: true
+  when: create_ansible_user_state_file_enabled
+
+- name: Grant the Ansible user passwordless sudo access
+  ansible.builtin.copy:
+    content: "{{ create_ansible_user_name }} ALL=(ALL:ALL) NOPASSWD: ALL\n"
+    dest: "/etc/sudoers.d/{{ create_ansible_user_name }}"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+
+- name: Mark the Ansible user configuration as successful
+  ansible.builtin.copy:
+    content: "ok\n"
+    dest: "{{ create_ansible_user_home }}/.ssh/.state"
+    owner: "{{ create_ansible_user_name }}"
+    group: "{{ create_ansible_user_name }}"
+    mode: "0600"
+  when: create_ansible_user_state_file_enabled
