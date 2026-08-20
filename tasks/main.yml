@@ -26,7 +26,6 @@
       - create_ansible_user_ssh_public_keys is sequence
       - create_ansible_user_ssh_public_keys is not string
       - create_ansible_user_ssh_public_keys | length > 0
-      - create_ansible_user_state_file_enabled | type_debug == 'bool'
       - create_ansible_user_login_test_enabled | type_debug == 'bool'
       - create_ansible_user_login_test_connect_timeout | int > 0
       - create_ansible_user_login_test_timeout | int > 0
@@ -75,71 +74,102 @@
     group: "{{ create_ansible_user_name }}"
     mode: "0700"
 
-- name: Mark the Ansible user configuration as incomplete
-  ansible.builtin.copy:
-    content: "nok\n"
-    dest: "{{ create_ansible_user_home }}/.ssh/.state"
-    owner: "{{ create_ansible_user_name }}"
-    group: "{{ create_ansible_user_name }}"
-    mode: "0600"
-  when: create_ansible_user_state_file_enabled
+- name: Inspect the existing authorized keys before changing them
+  ansible.builtin.stat:
+    path: "{{ create_ansible_user_home }}/.ssh/authorized_keys"
+    follow: true
+  register: create_ansible_user_previous_authorized_keys_stat
 
-- name: Install sudo
-  ansible.builtin.package:
-    name: sudo
-    state: present
-
-- name: Configure authorized SSH keys
-  ansible.builtin.copy:
-    content: >-
-      {{ (create_ansible_user_ssh_public_keys | map('trim') | join('\n'))
-         + '\n' }}
-    dest: "{{ create_ansible_user_home }}/.ssh/authorized_keys"
-    owner: "{{ create_ansible_user_name }}"
-    group: "{{ create_ansible_user_name }}"
-    mode: "0600"
-
-- name: Read back the authorized SSH keys
+- name: Save the existing authorized keys before changing them
   ansible.builtin.slurp:
     src: "{{ create_ansible_user_home }}/.ssh/authorized_keys"
-  register: create_ansible_user_authorized_keys_file
-  when: create_ansible_user_state_file_enabled
+  register: create_ansible_user_previous_authorized_keys
+  when: create_ansible_user_previous_authorized_keys_stat.stat.exists
 
-- name: Verify the authorized SSH keys on the target
-  ansible.builtin.assert:
-    that:
-      - >-
-        (create_ansible_user_authorized_keys_file.content
-        | b64decode).splitlines()
-        == (create_ansible_user_ssh_public_keys | map('trim') | list)
-    fail_msg: >-
-      The target's authorized_keys file does not contain exactly the configured
-      SSH public keys. The state marker remains nok.
-    quiet: true
-  when: create_ansible_user_state_file_enabled
+- name: Configure and verify access for the Ansible account
+  block:
+    - name: Install sudo
+      ansible.builtin.package:
+        name: sudo
+        state: present
 
-- name: Grant the Ansible user passwordless sudo access
-  ansible.builtin.copy:
-    content: "{{ create_ansible_user_name }} ALL=(ALL:ALL) NOPASSWD: ALL\n"
-    dest: "/etc/sudoers.d/{{ create_ansible_user_name }}"
-    owner: root
-    group: root
-    mode: "0440"
-    validate: /usr/sbin/visudo -cf %s
+    - name: Configure authorized SSH keys
+      ansible.builtin.lineinfile:
+        path: "{{ create_ansible_user_home }}/.ssh/authorized_keys"
+        line: "{{ item | trim }}"
+        create: true
+        owner: "{{ create_ansible_user_name }}"
+        group: "{{ create_ansible_user_name }}"
+        mode: "0600"
+        state: present
+      loop: "{{ create_ansible_user_ssh_public_keys }}"
+      loop_control:
+        label: "SSH public key {{ ansible_loop.index }}"
+        extended: true
 
-- name: Verify the inventory credential through the new Ansible account
-  ansible.builtin.include_tasks: verify_login.yml
-  vars:
-    ansible_user: "{{ create_ansible_user_name }}"
-  when:
-    - create_ansible_user_login_test_enabled
-    - not ansible_check_mode
+    - name: Grant the Ansible user passwordless sudo access
+      ansible.builtin.copy:
+        content: "{{ create_ansible_user_name }} ALL=(ALL:ALL) NOPASSWD: ALL\n"
+        dest: "/etc/sudoers.d/{{ create_ansible_user_name }}"
+        owner: root
+        group: root
+        mode: "0440"
+        validate: /usr/sbin/visudo -cf %s
 
-- name: Mark the Ansible user configuration as successful
-  ansible.builtin.copy:
-    content: "ok\n"
-    dest: "{{ create_ansible_user_home }}/.ssh/.state"
-    owner: "{{ create_ansible_user_name }}"
-    group: "{{ create_ansible_user_name }}"
-    mode: "0600"
-  when: create_ansible_user_state_file_enabled
+    - name: Verify the inventory credential through the new Ansible account
+      ansible.builtin.include_tasks: verify_login.yml
+      vars:
+        ansible_user: "{{ create_ansible_user_name }}"
+      when:
+        - create_ansible_user_login_test_enabled
+        - not ansible_check_mode
+  rescue:
+    - name: Remove SSH keys added by this role run after a failure
+      ansible.builtin.lineinfile:
+        path: "{{ create_ansible_user_home }}/.ssh/authorized_keys"
+        regexp: "^{{ item | trim | regex_escape }}$"
+        state: absent
+      loop: "{{ create_ansible_user_ssh_public_keys }}"
+      loop_control:
+        label: "SSH public key {{ ansible_loop.index }}"
+        extended: true
+      when:
+        - >-
+          (item | trim) not in
+          ((create_ansible_user_previous_authorized_keys.content
+            | default('') | b64decode).splitlines())
+
+    - name: Restore previous authorized keys file attributes after a failure
+      ansible.builtin.file:
+        path: "{{ create_ansible_user_home }}/.ssh/authorized_keys"
+        owner: >-
+          {{ create_ansible_user_previous_authorized_keys_stat.stat.pw_name
+             | default(create_ansible_user_name) }}
+        group: >-
+          {{ create_ansible_user_previous_authorized_keys_stat.stat.gr_name
+             | default(create_ansible_user_name) }}
+        mode: >-
+          {{ create_ansible_user_previous_authorized_keys_stat.stat.mode
+             | default('0600') }}
+      when: create_ansible_user_previous_authorized_keys_stat.stat.exists
+
+    - name: Inspect the rolled-back authorized keys file
+      ansible.builtin.stat:
+        path: "{{ create_ansible_user_home }}/.ssh/authorized_keys"
+      register: create_ansible_user_rolled_back_authorized_keys_stat
+
+    - name: Remove an empty authorized keys file created by this role run
+      ansible.builtin.file:
+        path: "{{ create_ansible_user_home }}/.ssh/authorized_keys"
+        state: absent
+      when:
+        - not create_ansible_user_previous_authorized_keys_stat.stat.exists
+        - create_ansible_user_rolled_back_authorized_keys_stat.stat.exists
+        - create_ansible_user_rolled_back_authorized_keys_stat.stat.size == 0
+
+    - name: Report the access configuration failure after rollback
+      ansible.builtin.fail:
+        msg: >-
+          Configuring or verifying the Ansible account failed. SSH keys added
+          by this run were removed. Original error:
+          {{ ansible_failed_result.msg | default('unknown error') }}

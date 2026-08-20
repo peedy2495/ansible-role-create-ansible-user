@@ -4,7 +4,6 @@ create_ansible_user_comment: Ansible automation account
 create_ansible_user_shell: /bin/bash
 create_ansible_user_home: "/home/{{ create_ansible_user_name }}"
 create_ansible_user_ssh_public_keys: []
-create_ansible_user_state_file_enabled: false
 
 # Open a fresh Ansible connection after configuring the account.
 create_ansible_user_login_test_enabled: true

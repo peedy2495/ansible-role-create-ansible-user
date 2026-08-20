@@ -36,14 +36,14 @@ create_ansible_user_name: ansible
 create_ansible_user_comment: Ansible automation account
 create_ansible_user_shell: /bin/bash
 create_ansible_user_home: "/home/{{ create_ansible_user_name }}"
-create_ansible_user_state_file_enabled: false
 create_ansible_user_login_test_enabled: true
 create_ansible_user_login_test_connect_timeout: 10
 create_ansible_user_login_test_timeout: 30
 ```
 
-The role fully manages `authorized_keys`; removing a key from the variable also
-removes it from the host.
+The role adds every configured key to `authorized_keys` and preserves all other
+existing entries. Removing a key from the variable does not remove it from the
+host.
 
 ## Login verification
 
@@ -70,22 +70,15 @@ create_ansible_user_login_test_enabled: false
 Disabling the test means that the role verifies files and sudoers syntax only;
 it no longer proves that the account can authenticate.
 
+If configuring sudo or verifying the login fails, the role removes only keys
+that were newly added during that run. Keys present before the run remain
+untouched, and previous file ownership and permissions are restored. An empty
+file created by the failed run is removed.
+
 Only the credential active for the current Ansible run is tested. Additional
 public keys in `create_ansible_user_ssh_public_keys` are installed but cannot be
 cryptographically tested without running Ansible with their corresponding
 credentials.
-
-## State marker
-
-When `create_ansible_user_state_file_enabled` is enabled, `.ssh/.state` contains:
-
-- `nok` while configuration or verification is incomplete.
-- `ok` after `authorized_keys` was read back, sudo was configured, and the
-  enabled login test succeeded.
-
-Following security roles should use the same sequence: write `nok`, apply their
-changes, verify the effective configuration, then write `ok`. The marker is a
-workflow status, not proof of security compliance.
 
 ## Credentials per target group
 

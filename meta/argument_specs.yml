@@ -28,11 +28,7 @@ argument_specs:
         type: list
         elements: str
         required: true
-        description: Public SSH keys that exclusively populate authorized_keys.
-      create_ansible_user_state_file_enabled:
-        type: bool
-        default: false
-        description: Write an optional nok/ok workflow marker below .ssh.
+        description: Public SSH keys to add to authorized_keys.
       create_ansible_user_login_test_enabled:
         type: bool
         default: true
