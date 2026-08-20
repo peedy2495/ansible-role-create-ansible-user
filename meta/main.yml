@@ -1,18 +1,30 @@
 ---
 galaxy_info:
-  namespace: ansible_common
+  standalone: true
+  namespace: peedy2495
   role_name: create_ansible_user
-  author: ansible-common contributors
+  author: peedy2495
   description: Create a key-only Ansible automation user with full sudo access.
   license: MIT
   min_ansible_version: "2.14"
   platforms:
+    - name: Debian
+      versions:
+        - all
     - name: Ubuntu
       versions:
         - all
     - name: EL
       versions:
-        - "8"
-        - "9"
+        - all
+  galaxy_tags:
+    - ansible
+    - automation
+    - linux
+    - security
+    - ssh
+    - sudo
+    - system
+    - users
 
 dependencies: []

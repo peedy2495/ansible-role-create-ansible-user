@@ -1,0 +1,3 @@
+[targets]
+# Replace this example with a reachable Debian, Ubuntu, or EL test host.
+test-host ansible_host=192.0.2.1

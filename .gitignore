@@ -1,0 +1,20 @@
+# Ansible runtime files
+*.retry
+ansible.log
+
+# Molecule and test caches
+.cache/
+.molecule/
+.pytest_cache/
+__pycache__/
+
+# Python environments
+.venv/
+venv/
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store

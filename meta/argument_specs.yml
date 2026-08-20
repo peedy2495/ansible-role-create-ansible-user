@@ -1,0 +1,60 @@
+---
+argument_specs:
+  main:
+    short_description: Create and verify a key-only Ansible automation user
+    description:
+      - Creates an automation account with managed SSH keys and passwordless sudo.
+      - Optionally verifies the account through a fresh SSH connection.
+    author:
+      - peedy2495
+    options:
+      create_ansible_user_name:
+        type: str
+        default: ansible
+        description: Name of the automation account.
+      create_ansible_user_comment:
+        type: str
+        default: Ansible automation account
+        description: GECOS comment for the account.
+      create_ansible_user_shell:
+        type: str
+        default: /bin/bash
+        description: Login shell for the account.
+      create_ansible_user_home:
+        type: str
+        default: /home/ansible
+        description: Absolute home directory of the account.
+      create_ansible_user_ssh_public_keys:
+        type: list
+        elements: str
+        required: true
+        description: Public SSH keys that exclusively populate authorized_keys.
+      create_ansible_user_state_file_enabled:
+        type: bool
+        default: false
+        description: Write an optional nok/ok workflow marker below .ssh.
+      create_ansible_user_login_test_enabled:
+        type: bool
+        default: true
+        description: Test a new SSH login and passwordless sudo from the controller.
+      create_ansible_user_login_test_host:
+        type: str
+        description: Hostname or address used by the controller-side SSH test.
+      create_ansible_user_login_test_port:
+        type: int
+        default: 22
+        description: Port used by the controller-side SSH test.
+      create_ansible_user_login_test_identity_file:
+        type: path
+        default: ""
+        description: >-
+          Optional private-key path on the controller. The SSH agent and default
+          identity files are used when this is empty.
+      create_ansible_user_login_test_connect_timeout:
+        type: int
+        default: 10
+        description: SSH connection timeout in seconds.
+      create_ansible_user_login_test_retries:
+        type: int
+        default: 3
+        description: Number of SSH login attempts.

@@ -2,11 +2,14 @@
 - name: Verify that the operating system is supported
   ansible.builtin.assert:
     that:
+      - ansible_facts['os_family'] is defined
       - ansible_facts['distribution'] is defined
-      - ansible_facts['distribution'] in ['Ubuntu', 'Rocky']
+      - ansible_facts['os_family'] in ['Debian', 'RedHat']
     fail_msg: >-
-      create-ansible-user supports Ubuntu and Rocky Linux only; detected
-      {{ ansible_facts['distribution'] | default('an unknown distribution') }}.
+      create-ansible-user supports Debian-family and Enterprise Linux-family
+      systems only; detected
+      {{ ansible_facts['distribution'] | default('an unknown distribution') }}
+      (OS family {{ ansible_facts['os_family'] | default('unknown') }}).
     quiet: true
 
 - name: Verify role settings
@@ -24,6 +27,12 @@
       - create_ansible_user_ssh_public_keys is not string
       - create_ansible_user_ssh_public_keys | length > 0
       - create_ansible_user_state_file_enabled | type_debug == 'bool'
+      - create_ansible_user_login_test_enabled | type_debug == 'bool'
+      - create_ansible_user_login_test_host | trim | length > 0
+      - create_ansible_user_login_test_port | int > 0
+      - create_ansible_user_login_test_port | int <= 65535
+      - create_ansible_user_login_test_connect_timeout | int > 0
+      - create_ansible_user_login_test_retries | int > 0
     fail_msg: >-
       Set create_ansible_user_ssh_public_keys to a non-empty list of SSH
       public keys. The username must be a conventional Unix account name, and
@@ -119,6 +128,53 @@
     group: root
     mode: "0440"
     validate: /usr/sbin/visudo -cf %s
+
+- name: Verify login and passwordless sudo through a fresh SSH connection
+  ansible.builtin.command:
+    argv: >-
+      {{
+        ['ssh',
+         '-o', 'BatchMode=yes',
+         '-o', 'PasswordAuthentication=no',
+         '-o', 'KbdInteractiveAuthentication=no',
+         '-o', 'StrictHostKeyChecking=no',
+         '-o', 'UserKnownHostsFile=/dev/null',
+         '-o', 'ConnectTimeout=' ~
+               (create_ansible_user_login_test_connect_timeout | string),
+         '-p', create_ansible_user_login_test_port | string]
+        +
+        ((create_ansible_user_login_test_identity_file | trim | length > 0)
+         | ternary(
+             ['-i', create_ansible_user_login_test_identity_file],
+             []
+           ))
+        +
+        [create_ansible_user_name ~ '@' ~ create_ansible_user_login_test_host,
+         'sudo', '-n', 'true']
+      }}
+  delegate_to: localhost
+  become: false
+  register: create_ansible_user_login_test
+  changed_when: false
+  failed_when: false
+  retries: "{{ create_ansible_user_login_test_retries }}"
+  delay: 2
+  until: create_ansible_user_login_test.rc == 0
+  when:
+    - create_ansible_user_login_test_enabled
+    - not ansible_check_mode
+
+- name: Confirm successful SSH login test
+  ansible.builtin.assert:
+    that:
+      - create_ansible_user_login_test.rc == 0
+    fail_msg: >-
+      A fresh SSH login as {{ create_ansible_user_name }} or passwordless sudo
+      failed: {{ create_ansible_user_login_test.stderr | default('no error output') }}
+    quiet: true
+  when:
+    - create_ansible_user_login_test_enabled
+    - not ansible_check_mode
 
 - name: Mark the Ansible user configuration as successful
   ansible.builtin.copy:
