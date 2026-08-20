@@ -4,7 +4,7 @@ argument_specs:
     short_description: Create and verify a key-only Ansible automation user
     description:
       - Creates an automation account with managed SSH keys and passwordless sudo.
-      - Optionally verifies the account through a fresh SSH connection.
+      - Optionally verifies the account through a fresh Ansible connection.
     author:
       - peedy2495
     options:
@@ -36,25 +36,14 @@ argument_specs:
       create_ansible_user_login_test_enabled:
         type: bool
         default: true
-        description: Test a new SSH login and passwordless sudo from the controller.
-      create_ansible_user_login_test_host:
-        type: str
-        description: Hostname or address used by the controller-side SSH test.
-      create_ansible_user_login_test_port:
-        type: int
-        default: 22
-        description: Port used by the controller-side SSH test.
-      create_ansible_user_login_test_identity_file:
-        type: path
-        default: ""
         description: >-
-          Optional private-key path on the controller. The SSH agent and default
-          identity files are used when this is empty.
+          Test the current inventory credential through the new Ansible account
+          and verify passwordless privilege escalation.
       create_ansible_user_login_test_connect_timeout:
         type: int
         default: 10
-        description: SSH connection timeout in seconds.
-      create_ansible_user_login_test_retries:
+        description: Timeout for each Ansible transport connection attempt.
+      create_ansible_user_login_test_timeout:
         type: int
-        default: 3
-        description: Number of SSH login attempts.
+        default: 30
+        description: Overall timeout for establishing the tested connection.

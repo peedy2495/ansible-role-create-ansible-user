@@ -7,4 +7,3 @@
     - role: "{{ playbook_dir }}/.."
       create_ansible_user_ssh_public_keys:
         - "ssh-ed25519 AAAA_REPLACE_WITH_A_REAL_TEST_KEY galaxy-role-test"
-      create_ansible_user_login_test_identity_file: /path/to/test_private_key

@@ -28,11 +28,8 @@
       - create_ansible_user_ssh_public_keys | length > 0
       - create_ansible_user_state_file_enabled | type_debug == 'bool'
       - create_ansible_user_login_test_enabled | type_debug == 'bool'
-      - create_ansible_user_login_test_host | trim | length > 0
-      - create_ansible_user_login_test_port | int > 0
-      - create_ansible_user_login_test_port | int <= 65535
       - create_ansible_user_login_test_connect_timeout | int > 0
-      - create_ansible_user_login_test_retries | int > 0
+      - create_ansible_user_login_test_timeout | int > 0
     fail_msg: >-
       Set create_ansible_user_ssh_public_keys to a non-empty list of SSH
       public keys. The username must be a conventional Unix account name, and
@@ -44,9 +41,10 @@
     that:
       - item is string
       - item | trim | length > 0
+      - (item | trim).splitlines() | length == 1
     fail_msg: >-
-      Every item in create_ansible_user_ssh_public_keys must be a non-empty
-      string.
+      Every item in create_ansible_user_ssh_public_keys must contain exactly
+      one non-empty public key.
     quiet: true
   loop: "{{ create_ansible_user_ssh_public_keys }}"
   loop_control:
@@ -129,49 +127,10 @@
     mode: "0440"
     validate: /usr/sbin/visudo -cf %s
 
-- name: Verify login and passwordless sudo through a fresh SSH connection
-  ansible.builtin.command:
-    argv: >-
-      {{
-        ['ssh',
-         '-o', 'BatchMode=yes',
-         '-o', 'PasswordAuthentication=no',
-         '-o', 'KbdInteractiveAuthentication=no',
-         '-o', 'StrictHostKeyChecking=no',
-         '-o', 'UserKnownHostsFile=/dev/null',
-         '-o', 'ConnectTimeout=' ~
-               (create_ansible_user_login_test_connect_timeout | string),
-         '-p', create_ansible_user_login_test_port | string]
-        +
-        ((create_ansible_user_login_test_identity_file | trim | length > 0)
-         | ternary(
-             ['-i', create_ansible_user_login_test_identity_file],
-             []
-           ))
-        +
-        [create_ansible_user_name ~ '@' ~ create_ansible_user_login_test_host,
-         'sudo', '-n', 'true']
-      }}
-  delegate_to: localhost
-  become: false
-  register: create_ansible_user_login_test
-  changed_when: false
-  failed_when: false
-  retries: "{{ create_ansible_user_login_test_retries }}"
-  delay: 2
-  until: create_ansible_user_login_test.rc == 0
-  when:
-    - create_ansible_user_login_test_enabled
-    - not ansible_check_mode
-
-- name: Confirm successful SSH login test
-  ansible.builtin.assert:
-    that:
-      - create_ansible_user_login_test.rc == 0
-    fail_msg: >-
-      A fresh SSH login as {{ create_ansible_user_name }} or passwordless sudo
-      failed: {{ create_ansible_user_login_test.stderr | default('no error output') }}
-    quiet: true
+- name: Verify the inventory credential through the new Ansible account
+  ansible.builtin.include_tasks: verify_login.yml
+  vars:
+    ansible_user: "{{ create_ansible_user_name }}"
   when:
     - create_ansible_user_login_test_enabled
     - not ansible_check_mode

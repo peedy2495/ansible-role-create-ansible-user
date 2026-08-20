@@ -6,10 +6,7 @@ create_ansible_user_home: "/home/{{ create_ansible_user_name }}"
 create_ansible_user_ssh_public_keys: []
 create_ansible_user_state_file_enabled: false
 
-# Open a fresh SSH connection from the controller after configuring the account.
+# Open a fresh Ansible connection after configuring the account.
 create_ansible_user_login_test_enabled: true
-create_ansible_user_login_test_host: "{{ ansible_host | default(inventory_hostname) }}"
-create_ansible_user_login_test_port: "{{ ansible_port | default(22) }}"
-create_ansible_user_login_test_identity_file: ""
 create_ansible_user_login_test_connect_timeout: 10
-create_ansible_user_login_test_retries: 3
+create_ansible_user_login_test_timeout: 30

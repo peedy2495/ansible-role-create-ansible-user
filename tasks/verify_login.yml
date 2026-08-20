@@ -1,0 +1,37 @@
+---
+- name: Verify the Ansible login and privilege escalation
+  block:
+    - name: Reset the existing connection before testing the new account
+      ansible.builtin.meta: reset_connection
+
+    - name: Wait for a usable Ansible connection as the new account
+      ansible.builtin.wait_for_connection:
+        connect_timeout: "{{ create_ansible_user_login_test_connect_timeout }}"
+        sleep: 2
+        timeout: "{{ create_ansible_user_login_test_timeout }}"
+      become: false
+
+    - name: Determine the effective user after passwordless privilege escalation
+      ansible.builtin.command:
+        argv:
+          - id
+          - -u
+      become: true
+      register: create_ansible_user_become_test
+      changed_when: false
+      vars:
+        ansible_become_method: sudo
+        ansible_become_password: ""
+        ansible_become_user: root
+
+    - name: Confirm root privileges through the new account
+      ansible.builtin.assert:
+        that:
+          - create_ansible_user_become_test.stdout == "0"
+        fail_msg: >-
+          The Ansible login as {{ create_ansible_user_name }} succeeded, but
+          passwordless privilege escalation did not result in UID 0.
+        quiet: true
+  always:
+    - name: Reset the tested connection before restoring the play connection
+      ansible.builtin.meta: reset_connection
